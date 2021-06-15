@@ -85,9 +85,11 @@ import java.nio.charset.Charset;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -190,6 +192,10 @@ public class JoH {
         return (tsl() - when);
     }
 
+    public static long msSince(long end, long start) {
+        return (end - start);
+    }
+
     public static long msTill(long when) {
         return (when - tsl());
     }
@@ -209,6 +215,30 @@ public class JoH {
         return new String(hexChars);
     }
 
+    // Convert a stream of bytes to a mac format (i.e: 12:34:AB:BC:DE:FC)
+    public static String bytesToHexMacFormat(final byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "NoMac";
+        }
+        final String str = bytesToHex(bytes);
+        final StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < str.length(); i += 2) {
+            if (sb.length() > 0) {
+                sb.append(":");
+            }
+            sb.append(str.substring(i, i + 2));
+        }
+        return sb.toString();
+    }
+
+    public static byte[] reverseBytes(byte[] source) {
+        byte[] dest = new byte[source.length];
+        for (int i = 0; i < source.length; i++) {
+            dest[(source.length - i) - 1] = source[i];
+        }
+        return dest;
+    }
+
     public static byte[] tolerantHexStringToByteArray(String str) {
         return hexStringToByteArray(str.toUpperCase().replaceAll("[^A-F0-9]",""));
     }
@@ -225,6 +255,15 @@ public class JoH {
             return data;
         } catch (Exception e) {
             Log.e(TAG, "Exception processing hexString: " + e);
+            return null;
+        }
+    }
+
+    public static String macFormat(final String unformatted) {
+        if (unformatted == null) return null;
+        try {
+            return unformatted.replaceAll("[^a-fA-F0-9]", "").replaceAll("(.{2})", "$1:").substring(0, 17);
+        } catch (Exception e) {
             return null;
         }
     }
@@ -616,6 +655,11 @@ public class JoH {
         }.getType());
     }
 
+    public static List<Float> JsonStringToFloatList(String json) {
+        return new Gson().fromJson(json, new TypeToken<ArrayList<Float>>() {
+        }.getType());
+    }
+
     private static Gson gson_instance;
     public static Gson defaultGsonInstance() {
      if (gson_instance == null) {
@@ -790,7 +834,7 @@ public class JoH {
         return wl;
     }
 
-    public static void releaseWakeLock(PowerManager.WakeLock wl) {
+    public static synchronized void releaseWakeLock(final PowerManager.WakeLock wl) {
         if (debug_wakelocks) Log.d(TAG, "releaseWakeLock: " + wl.toString());
         if (wl == null) return;
         if (wl.isHeld()) {
@@ -1065,7 +1109,14 @@ public class JoH {
     }
 
     public static void startService(final Class c, final String... args) {
+        startService(c, null, args);
+    }
+
+    public static void startService(final Class c, final byte[] bytes, final String... args) {
         final Intent intent = new Intent(xdrip.getAppContext(), c);
+        if (bytes != null) {
+            intent.putExtra("bytes_payload", bytes);
+        }
         if (args.length % 2 == 1) {
             throw new RuntimeException("Odd number of args for JoH.startService");
         }
@@ -1449,6 +1500,34 @@ public class JoH {
         }
         catch (Exception e) {
             Log.e(thisTAG, "An exception occured while refreshing gatt device cache: "+e);
+        }
+        return false;
+    }
+
+    public static boolean createSpecialBond(final String thisTAG, final BluetoothDevice device){
+        try {
+            Log.e(thisTAG,"Attempting special bond");
+            Class[] argTypes = new Class[] { int.class };
+            final Method method = device.getClass().getMethod("createBond", argTypes);
+            if (method != null) {
+                return (Boolean) method.invoke(device, 2);
+            } else {
+                Log.e(thisTAG,"CANNOT FIND SPECIAL BOND METHOD!!");
+            }
+        }
+        catch (Exception e) {
+            Log.e(thisTAG, "An exception occured while creating special bond: "+e);
+        }
+        return false;
+    }
+
+    public static boolean isBluetoothEnabled(final Context context) {
+        try {
+            final BluetoothManager bluetoothManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
+            final BluetoothAdapter mBluetoothAdapter = bluetoothManager.getAdapter(); // local scope only
+            return mBluetoothAdapter.isEnabled();
+        } catch (Exception e) {
+            UserError.Log.d(TAG, "isBluetoothEnabled() exception: " + e);
         }
         return false;
     }
